@@ -1,0 +1,79 @@
+name: Auto-Check, Merge and Deploy Pipeline
+
+# 触发条件：
+# 1. 当有向 main 分支提交合并请求 (PR) 时，触发语法检查和自动合并
+# 2. 当 main 分支有代码更新 (被合并后)，触发自动化部署
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+
+jobs:
+  # ==========================================
+  # 阶段一：纯语法检查 (只抓致命错误，不管漏洞)
+  # ==========================================
+  syntax-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.6' # 匹配你的 CentOS 环境
+
+      - name: Install flake8
+        run: pip install flake8
+
+      - name: Check Python Syntax
+        # 这里只检查导致程序崩溃的致命语法错误 (如缩进错、少冒号、变量未定义)
+        # 绝对不会检查安全漏洞，也不会管代码排版好不好看
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  # ==========================================
+  # 阶段二：自动合并代码 (无冲突且语法通过)
+  # ==========================================
+  auto-merge:
+    needs: syntax-check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # 必须赋予 GitHub Actions 合并代码的写权限
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - name: Automate PR Merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # 使用 GitHub 官方 CLI 工具，如果代码没有冲突，自动执行 Merge
+        run: gh pr merge --auto --merge "${{ github.event.pull_request.html_url }}"
+
+  # ==========================================
+  # 阶段三：自动化部署到 CentOS (合并完成后触发)
+  # ==========================================
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to CentOS Server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            echo "[*] 开始自动化部署..."
+            cd /blog_project_test
+            
+            # 拉取刚刚自动合并到 main 的最新代码
+            git pull origin main
+            
+            echo "[*] 重启 Flask 业务进程..."
+            pkill -f app.py || true
+            nohup python3 app.py >> flask.log 2>&1 &
+            
+            echo "[+] 部署成功，新代码已生效！"

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}首页 - 我的博客{% endblock %}
+{% block content %}
+<h2 class="text-center">最新文章</h2>
+{% for post in posts %}
+<div class="panel panel-default">
+    <div class="panel-body">
+        <h3><a href="{{ url_for('post_detail', post_id=post.id) }}">{{ post.title }}</a></h3>
+        <p class="text-muted">作者: {{ post.author.username }} | 发布时间: {{ post.timestamp.strftime('%Y-%m-%d %H:%M') }}</p>
+        <p>{{ post.content[:100] }}... <a href="{{ url_for('post_detail', post_id=post.id) }}">阅读全文</a></p>
+    </div>
+</div>
+{% endfor %}
+<!-- 在文章面板中添加删除按钮 -->
+{% for post in posts %}
+<div class="panel panel-default" id="post-{{ post.id }}">
+    <div class="panel-body">
+        <h3><a href="{{ url_for('post_detail', post_id=post.id) }}">{{ post.title }}</a></h3>
+        <p class="text-muted">
+            作者: {{ post.author.username }} | 
+            发布时间: {{ post.timestamp.strftime('%Y-%m-%d %H:%M') }}
+            
+            <!-- 如果是当前用户的文章，显示删除按钮 -->
+            {% if current_user.is_authenticated and post.author_id == current_user.id %}
+            <span class="pull-right">
+                <button type="button" class="btn btn-danger btn-xs" 
+                        onclick="deletePost({{ post.id }})"
+                        title="删除文章">
+                    <span class="glyphicon glyphicon-trash"></span> 删除
+                </button>
+            </span>
+            {% endif %}
+        </p>
+        <p>{{ post.content[:100] }}... 
+            <a href="{{ url_for('post_detail', post_id=post.id) }}">阅读全文</a>
+        </p>
+    </div>
+</div>
+{% endfor %}
+
+
+<!-- 在页面底部添加JavaScript -->
+{% block scripts %}
+{{ super() }}
+<script>
+function deletePost(postId) {
+    if (confirm('确定要删除这篇文章吗？此操作不可撤销。')) {
+        fetch(`/delete_post/${postId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // 从页面中移除文章
+                document.getElementById(`post-${postId}`).remove();
+                alert('文章已删除');
+                // 如果页面没有文章了，显示提示
+                if (document.querySelectorAll('.panel.panel-default').length === 0) {
+                    document.querySelector('.container').innerHTML += 
+                        '<div class="alert alert-info">暂无文章，点击"写文章"开始创作吧！</div>';
+                }
+            } else {
+                alert('删除失败: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('删除失败，请刷新页面后重试');
+        });
+    }
+}
+</script>
+{% endblock %}
+{% endblock %}

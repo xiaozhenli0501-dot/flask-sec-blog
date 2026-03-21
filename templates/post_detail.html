@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}{{ post.title }} - 我的博客{% endblock %}
+{% block content %}
+
+<h2 class="text-center">{{ post.title }}</h2>
+<p class="text-muted">
+    作者: {{ post.author.username }} | 
+    发布时间: {{ post.timestamp.strftime('%Y-%m-%d %H:%M') }}
+    评论: {{ post.comment_count }}    
+    <!-- 如果是当前用户的文章，显示删除按钮 -->
+    {% if current_user.is_authenticated and post.author_id == current_user.id %}
+    <span class="pull-right">
+        <form action="{{ url_for('delete_post', post_id=post.id) }}" method="POST" 
+              style="display: inline;" 
+              onsubmit="return confirm('确定要删除这篇文章吗？此操作不可撤销。');">
+            <button type="submit" class="btn btn-danger btn-sm">
+                <span class="glyphicon glyphicon-trash"></span> 删除文章
+            </button>
+        </form>
+    </span>
+    {% endif %}
+</p>
+<hr>
+<div class="well">{{ post.content }}</div>
+
+
+<hr>
+<!-- 评论区域 -->
+<div class="comments-section">
+    <h3>评论（{{ post.comment_count }}）</h3>
+
+
+    <!-- 发表评论表单 -->
+    {% if current_user.is_authenticated %}
+    <div class="panel panel-default">
+        <div class="panel-body">
+            <h4>发表评论</h4>
+            <form method="POST" action="{{ url_for('add_comment', post_id=post.id) }}">
+                {{ form.hidden_tag() }}
+                <div class="form-group">
+                    <textarea class="form-control" name="content" rows="3" 
+                              placeholder="写下你的评论..." required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">发表评论</button>
+            </form>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        请先<a href="{{ url_for('login') }}">登录</a>后发表评论。
+    </div>
+    {% endif %}
+    
+    <!-- 评论列表 -->
+    <div class="comments-list">
+        {% for comment in post.comments %}
+            {% if not comment.parent_id %}
+            <div class="panel panel-default comment-item" id="comment-{{ comment.id }}">
+                <div class="panel-body">
+                    <div class="comment-header">
+                        <strong>
+                            {% if comment.author %}
+                                {{ comment.author.username }}
+                            {% else %}
+                                匿名用户
+                            {% endif %}
+                        </strong>
+                        <small class="text-muted">
+                            {{ comment.timestamp.strftime('%Y-%m-%d %H:%M') }}
+                        </small>
+                        
+                        {% if current_user.is_authenticated and 
+                              (current_user.id == comment.author_id or 
+                               current_user.id == post.author_id) %}
+                        <div class="pull-right">
+                            {% if current_user.id == comment.author_id %}
+                            <a href="{{ url_for('edit_comment', comment_id=comment.id) }}" 
+                               class="btn btn-xs btn-warning">编辑</a>
+                            {% endif %}
+                            
+                            <form action="{{ url_for('delete_comment', comment_id=comment.id) }}" 
+                                  method="POST" style="display: inline;"
+                                  onsubmit="return confirm('确定要删除这条评论吗？');">
+                                <button type="submit" class="btn btn-xs btn-danger">删除</button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="comment-content" style="margin-top: 10px;">
+                        {{ comment.content | safe }}
+                    </div>
+                    
+                    {% if current_user.is_authenticated %}
+                    <div class="comment-actions" style="margin-top: 10px;">
+                        <button class="btn btn-xs btn-default reply-btn" 
+                                data-comment-id="{{ comment.id }}">
+                            回复
+                        </button>
+                    </div>
+                    {% endif %}
+
+                    {% if comment.replies %}
+                    <div class="replies-list" style="margin-top: 15px; padding-left: 20px; border-left: 3px solid #eee;">
+                        {% for reply in comment.replies %}
+                        <div class="reply-item" id="comment-{{ reply.id }}" style="margin-top: 15px;">
+                            <div class="comment-header">
+                                <strong>{{ reply.author.username if reply.author else '匿名用户' }}</strong>
+                                <small class="text-muted">{{ reply.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
+                                
+                                {% if current_user.is_authenticated and (current_user.id == reply.author_id or current_user.id == post.author_id) %}
+                                <div class="pull-right">
+                                    <form action="{{ url_for('delete_comment', comment_id=reply.id) }}" 
+                                          method="POST" style="display: inline;"
+                                          onsubmit="return confirm('确定要删除这条回复吗？');">
+                                        <button type="submit" class="btn btn-xs btn-danger">删除</button>
+                                    </form>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="comment-content" style="margin-top: 5px;">
+                                {{ reply.content | safe }}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    </div>
+            </div>
+            {% endif %}
+        {% else %}
+        <div class="alert alert-info">暂无评论，快来发表第一条评论吧！</div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<div class="text-center" style="margin-top: 20px;">
+    <a href="{{ url_for('index') }}" class="btn btn-primary">返回首页</a>
+    {% if current_user.is_authenticated and post.author_id == current_user.id %}
+    <a href="{{ url_for('edit_post', post_id=post.id) }}" class="btn btn-warning">编辑文章</a>
+    {% endif %}
+</div>
+
+
+{% if current_user.is_authenticated %}
+
+<script>
+document.querySelectorAll('.reply-btn').forEach(button => {
+    button.addEventListener('click', function() {
+        const commentId = this.getAttribute('data-comment-id');
+        const commentDiv = document.querySelector(`#comment-${commentId}`);
+
+
+        // 移除已有的回复表单
+        const existingForm = commentDiv.querySelector('.reply-form');
+        if (existingForm) {
+            existingForm.remove();
+            return;
+        }
+        
+        // 创建回复表单
+        const form = document.createElement('div');
+        form.className = 'reply-form panel panel-default';
+        form.innerHTML = `
+            <div class="panel-body">
+                <form method="POST" action="{{ url_for('add_comment', post_id=post.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ form.csrf_token._value() }}">
+                    <input type="hidden" name="parent_id" value="${commentId}">
+                    <div class="form-group">
+                        <textarea class="form-control" name="content" rows="2" 
+                                  placeholder="回复..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">发表回复</button>
+                    <button type="button" class="btn btn-default btn-sm cancel-reply">取消</button>
+                </form>
+            </div>
+        `;
+        
+        // 插入到评论内容后
+        const contentDiv = commentDiv.querySelector('.comment-content');
+        contentDiv.parentNode.insertBefore(form, contentDiv.nextSibling);
+        
+        // 取消按钮事件
+        form.querySelector('.cancel-reply').addEventListener('click', function() {
+            form.remove();
+        });
+    });
+
+});
+</script>
+{% endif %}
+
+{% endblock %}
+
