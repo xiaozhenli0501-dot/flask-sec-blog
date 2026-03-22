@@ -21,7 +21,7 @@ metrics = PrometheusMetrics(app)
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
 REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request latency', ['method', 'endpoint'])
 
-# --- ：自定义带 client_ip 标签的指标 (核心) ---
+# 自定义带 client_ip 标签的指标 
 HTTP_REQUESTS_BY_CLIENT_IP = Counter(
     'http_requests_by_client_ip_total',
     'Request count by client IP',
@@ -198,9 +198,11 @@ def login():
 @app.route('/post/<post_id>')
 def post_detail(post_id):
     try:
-        # 故意使用字符串拼接，构造 SQL 注入点
-        query = text(f"id = {post_id}") 
-        post = Post.query.filter(query).first()
+        # 注释下面代码
+        # query = text(f"id = {post_id}") 
+        # post = Post.query.filter(query).first()
+        # 下面是针对sql注入漏洞的修复版本，使用参数化查询避免直接拼接
+        post = Post.query.filter(Post.id == post_id).first()
     except Exception as e:
         # 靶场特性：暴露出数据库错误信息，便于实现报错注入
         return f"Database Error: {str(e)}", 500 

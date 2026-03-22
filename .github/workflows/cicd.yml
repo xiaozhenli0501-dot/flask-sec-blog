@@ -11,7 +11,7 @@ on:
 
 jobs:
   # ==========================================
-  # 阶段一：纯语法检查 (只抓致命错误，不管漏洞)
+  # 阶段一：纯语法检查 
   # ==========================================
   syntax-check:
     if: github.event_name == 'pull_request'
@@ -23,14 +23,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.6' # 匹配你的 CentOS 环境
+          python-version: '3.6' 
 
       - name: Install flake8
         run: pip install flake8
 
       - name: Check Python Syntax
-        # 这里只检查导致程序崩溃的致命语法错误 (如缩进错、少冒号、变量未定义)
-        # 绝对不会检查安全漏洞，也不会管代码排版好不好看
         run: |
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
