@@ -21,7 +21,7 @@ metrics = PrometheusMetrics(app)
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
 REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request latency', ['method', 'endpoint'])
 
-# 自定义带 client_ip 标签的指标 
+# client_ip 标签 
 HTTP_REQUESTS_BY_CLIENT_IP = Counter(
     'http_requests_by_client_ip_total',
     'Request count by client IP',
@@ -56,7 +56,7 @@ login_manager.login_view = 'login'  # 未登录时跳转的页面
 login_manager.login_message = '请先登录以访问此页面。'
 login_manager.login_message_category = 'warning'
 
-# 用户加载回调（Flask-Login必填）
+# 用户加载回调
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -198,7 +198,7 @@ def login():
 @app.route('/post/<post_id>')
 def post_detail(post_id):
     try:
-        # 注释下面代码
+        # 注释下两行代码
         # query = text(f"id = {post_id}") 
         # post = Post.query.filter(query).first()
         # 下面是针对sql注入漏洞的修复版本，使用参数化查询避免直接拼接
