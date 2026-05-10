@@ -12,23 +12,15 @@ class User(db.Model):
     password_hash = db.Column(db.String(128),nullable=False)
     #created_at = db.Column(db.DateTime,default=datetime.utcnow)
     
-    # 漏洞点 2：取消哈希加密，使用明文存储密码以配合靶场比较逻辑
+# 修复：使用安全的哈希加密存储密码
     def set_password(self, password):
-        self.password_hash = password # 直接存明文
+        from werkzeug.security import generate_password_hash
+        self.password_hash = generate_password_hash(password)
 
-    # 漏洞点 3：不安全的字符串逐位比对，导致时间侧信道攻击
+    # 修复：安全的密码验证，无时间延迟差异
     def check_password(self, password):
-        # 长度不同时的耗时差异
-        if len(self.password_hash) != len(password):
-            time.sleep(0.5)
-            return False
-
-        # 长度相同时，逐字节比对
-        for i in range(len(self.password_hash)):
-            if self.password_hash[i] != password[i]:
-                return False
-            time.sleep(0.2)
-        return True 
+        from werkzeug.security import check_password_hash
+        return check_password_hash(self.password_hash, password)
 
     #关联文章（一个用户可写多篇文章）
     posts = db.relationship('Post',backref='author',lazy=True)

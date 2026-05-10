@@ -194,19 +194,11 @@ def login():
     return render_template('login.html', form=form)
 
 # 添加文章详情页路由
-# 漏洞点 4： <post_id> 以允许传入非数字的 SQL Payload
-@app.route('/post/<post_id>')
+# 修复：使用安全的参数化查询防止SQL注入
+@app.route('/post/<int:post_id>')
 def post_detail(post_id):
-    try:
-        # SQL注入漏洞版本
-        query = text(f"id = {post_id}")
-        post = Post.query.filter(query).first()
-    except Exception as e:
-        # 靶场特性：暴露出数据库错误信息，便于实现报错注入
-        return f"Database Error: {str(e)}", 500
-
-    if not post:
-        return "404 Not Found", 404
+    # 修复：使用安全的参数化查询，post_id自动转换为整数
+    post = Post.query.get_or_404(post_id)
 
     form = CommentForm()
     return render_template('post_detail.html', post=post, form=form)
