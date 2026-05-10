@@ -170,19 +170,19 @@ def register():
 # 用户登录路由
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if current_user.is_authenticated:  
+    if current_user.is_authenticated:
         return redirect(url_for('index'))
     form = LoginForm()
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
-        
-        # 漏洞点 1：用户枚举漏洞，明确区分“用户名不存在”和“密码错误”
+
+        # 漏洞点 1：用户枚举漏洞，明确区分"用户名不存在"和"密码错误"
         if not user:
             flash('用户名不存在', 'danger')  # 明确暴露用户名是否存在
             return render_template('login.html', form=form)
-            
+
         if user.check_password(form.password.data):
-            login_user(user)  
+            login_user(user)
             AUTH_LOGIN_SUCCESSES.labels(username=user.username, client_ip=get_real_ip()).inc()
             flash(f'欢迎回来，{user.username}！', 'success')
             next_page = request.args.get('next')
@@ -190,7 +190,7 @@ def login():
         else:
             AUTH_LOGIN_FAILURES.labels(username=form.username.data, client_ip=get_real_ip()).inc()
             flash('密码错误', 'danger')  # 明确暴露密码错误
-            
+
     return render_template('login.html', form=form)
 
 # 添加文章详情页路由
@@ -198,19 +198,17 @@ def login():
 @app.route('/post/<post_id>')
 def post_detail(post_id):
     try:
-        # 注释下两行代码
-        # query = text(f"id = {post_id}") 
-        # post = Post.query.filter(query).first()
-        # 下面是针对sql注入漏洞的修复版本，使用参数化查询避免直接拼接
-        post = Post.query.filter(Post.id == post_id).first()
+        # SQL注入漏洞版本
+        query = text(f"id = {post_id}")
+        post = Post.query.filter(query).first()
     except Exception as e:
         # 靶场特性：暴露出数据库错误信息，便于实现报错注入
-        return f"Database Error: {str(e)}", 500 
+        return f"Database Error: {str(e)}", 500
 
     if not post:
         return "404 Not Found", 404
-        
-    form = CommentForm() 
+
+    form = CommentForm()
     return render_template('post_detail.html', post=post, form=form)
 
 # 漏洞点 5：搜索功能中构造 LIKE 拼接注入点
@@ -223,7 +221,7 @@ def search():
         posts = Post.query.filter(query).all()
     except Exception as e:
         return f"Database Error: {str(e)}", 500
-        
+
     return render_template('index.html', posts=posts)
 
 # 添加文章创建路由

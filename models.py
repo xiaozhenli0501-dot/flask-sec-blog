@@ -20,14 +20,14 @@ class User(db.Model):
     def check_password(self, password):
         # 长度不同时的耗时差异
         if len(self.password_hash) != len(password):
-            time.sleep(0.5)  
+            time.sleep(0.5)
             return False
-            
+
         # 长度相同时，逐字节比对
         for i in range(len(self.password_hash)):
             if self.password_hash[i] != password[i]:
                 return False
-            time.sleep(0.2)  
+            time.sleep(0.2)
         return True 
 
     #关联文章（一个用户可写多篇文章）
@@ -45,13 +45,6 @@ class User(db.Model):
     
     def get_id(self):
         return str(self.id)  # 返回用户的ID作为标识
-   
-    #密码加密存储
-    def set_password(self,password):
-        self.password_hash = generate_password_hash(password)
- 
-    def check_password(self,password):
-        return check_password_hash(self.password_hash,password)
 
     def __repr__(self):
         return f'<User {self.username}>'
