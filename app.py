@@ -21,7 +21,7 @@ metrics = PrometheusMetrics(app)
 REQUEST_COUNT = Counter('http_requests_total', 'Total HTTP requests', ['method', 'endpoint'])
 REQUEST_LATENCY = Histogram('http_request_duration_seconds', 'HTTP request latency', ['method', 'endpoint'])
 
-# client_ip 标签 
+# --- ：自定义带 client_ip 标签的指标 (核心) ---
 HTTP_REQUESTS_BY_CLIENT_IP = Counter(
     'http_requests_by_client_ip_total',
     'Request count by client IP',
@@ -56,7 +56,7 @@ login_manager.login_view = 'login'  # 未登录时跳转的页面
 login_manager.login_message = '请先登录以访问此页面。'
 login_manager.login_message_category = 'warning'
 
-# 用户加载回调
+# 用户加载回调（Flask-Login必填）
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -111,12 +111,12 @@ def after_request(response):
         REQUEST_LATENCY.labels(request.method, request.path).observe(latency)
     REQUEST_COUNT.labels(request.method, request.path).inc()
 
-    # 记录带 client_ip 的指标
+    # ---记录带 client_ip 的指标 ---
     HTTP_REQUESTS_BY_CLIENT_IP.labels(
         method=request.method,
         endpoint=request.path,
         status=response.status_code,
-        client_ip=get_real_ip() 
+        client_ip=get_real_ip() # 使用下面定义的函数
     ).inc()
 
     return response
@@ -170,50 +170,91 @@ def register():
 # 用户登录路由
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if current_user.is_authenticated:
+    if current_user.is_authenticated:  
         return redirect(url_for('index'))
     form = LoginForm()
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.username.data).first()
-
-        # 漏洞点 1：用户枚举漏洞，明确区分"用户名不存在"和"密码错误"
+        
+        # 漏洞点 1：用户枚举漏洞，明确区分“用户名不存在”和“密码错误”
         if not user:
+            logger.warning(
+                f"USER_ENUMERATION username={form.username.data} ip={get_real_ip()}"
+            )
             flash('用户名不存在', 'danger')  # 明确暴露用户名是否存在
             return render_template('login.html', form=form)
-
+            
         if user.check_password(form.password.data):
-            login_user(user)
+            logger.info(
+                f"LOGIN_SUCCESS username={user.username} ip={get_real_ip()}"
+            )
+            login_user(user)  
             AUTH_LOGIN_SUCCESSES.labels(username=user.username, client_ip=get_real_ip()).inc()
             flash(f'欢迎回来，{user.username}！', 'success')
             next_page = request.args.get('next')
             return redirect(next_page) if next_page else redirect(url_for('index'))
         else:
+            logger.warning(
+                f"LOGIN_FAILED username={form.username.data} ip={get_real_ip()}"
+            )
+
             AUTH_LOGIN_FAILURES.labels(username=form.username.data, client_ip=get_real_ip()).inc()
             flash('密码错误', 'danger')  # 明确暴露密码错误
-
+            
     return render_template('login.html', form=form)
 
 # 添加文章详情页路由
-# 修复：使用安全的参数化查询防止SQL注入
-@app.route('/post/<int:post_id>')
+# 漏洞点 4： <post_id> 以允许传入非数字的 SQL Payload
+@app.route('/post/<post_id>')
 def post_detail(post_id):
-    # 修复：使用安全的参数化查询，post_id自动转换为整数
-    post = Post.query.get_or_404(post_id)
+    if any(char in post_id for char in ["'", '"', ";", "--", "union", "select"]):
 
-    form = CommentForm()
+        logger.error(
+            f"SQLI_ATTEMPT ip={get_real_ip()} payload={post_id}"
+        )
+    try:
+        # 故意使用字符串拼接，构造 SQL 注入点
+        #query = text(f"id = {post_id}") 
+        #post = Post.query.filter(query).first()
+        post = Post.query.filter_by(id=post_id).first()  # 正常查询
+    except Exception as e:
+        # 靶场特性：暴露出数据库错误信息，便于实现报错注入
+        return f"Database Error: {str(e)}", 500 
+
+    if not post:
+        return "404 Not Found", 404
+        
+    form = CommentForm() 
     return render_template('post_detail.html', post=post, form=form)
 
 # 漏洞点 5：搜索功能中构造 LIKE 拼接注入点
 @app.route('/search')
 def search():
     keyword = request.args.get('q', '')
+    sqli_patterns = [
+        'union',
+        'select',
+        'or 1=1',
+        'sleep(',
+        'benchmark(',
+        '--'
+    ]
+
+    if any(pattern.lower() in keyword.lower() for pattern in sqli_patterns):
+
+        logger.error(
+            f"SQLI_ATTEMPT ip={get_real_ip()} payload={keyword}"
+        )
     try:
         # 搜索关键词拼接产生 SQL 注入
-        query = text(f"title LIKE '%{keyword}%' OR content LIKE '%{keyword}%'")
-        posts = Post.query.filter(query).all()
+        #query = text(f"title LIKE '%{keyword}%' OR content LIKE '%{keyword}%'")
+        #posts = Post.query.filter(query).all()
+        posts = Post.query.filter(
+            (Post.title.contains(keyword)) | (Post.content.contains(keyword))
+        ).all()  # 正常查询
     except Exception as e:
         return f"Database Error: {str(e)}", 500
-
+        
     return render_template('index.html', posts=posts)
 
 # 添加文章创建路由
@@ -368,7 +409,7 @@ def metrics():
     return generate_latest(REGISTRY)
 
 # IP 封禁 Webhook 路由
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(name)s:%(message)s')
 logger = logging.getLogger(__name__)
 
 def is_valid_ip(ip):
@@ -435,7 +476,9 @@ def block_ip_webhook():
             if status == 'firing':
                 success = execute_block_command(ip_to_block)
                 if success:
-                    logger.info(f"成功封禁 IP: {ip_to_block}")
+                    logger.warning(
+                        f"WEBHOOK_BLOCK ip={ip_to_block}"
+                    )
                     blocked_count += 1
                 else:
                     logger.error(f"封禁 IP {ip_to_block} 失败。")
