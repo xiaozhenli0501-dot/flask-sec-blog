@@ -245,6 +245,20 @@ def search():
         logger.error(
             f"SQLI_ATTEMPT ip={get_real_ip()} payload={keyword}"
         )
+    sqli_patterns = [
+        'union',
+        'select',
+        'or 1=1',
+        'sleep(',
+        'benchmark(',
+        '--'
+    ]
+
+    if any(pattern.lower() in keyword.lower() for pattern in sqli_patterns):
+
+        logger.error(
+            f"SQLI_ATTEMPT ip={get_real_ip()} payload={keyword}"
+        )
     try:
         # 搜索关键词拼接产生 SQL 注入
         #query = text(f"title LIKE '%{keyword}%' OR content LIKE '%{keyword}%'")
