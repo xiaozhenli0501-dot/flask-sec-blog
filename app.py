@@ -214,8 +214,9 @@ def post_detail(post_id):
         )
     try:
         # 故意使用字符串拼接，构造 SQL 注入点
-        query = text(f"id = {post_id}") 
-        post = Post.query.filter(query).first()
+        #query = text(f"id = {post_id}") 
+        #post = Post.query.filter(query).first()
+        post = Post.query.filter_by(id=post_id).first()  # 正常查询
     except Exception as e:
         # 靶场特性：暴露出数据库错误信息，便于实现报错注入
         return f"Database Error: {str(e)}", 500 
@@ -244,10 +245,27 @@ def search():
         logger.error(
             f"SQLI_ATTEMPT ip={get_real_ip()} payload={keyword}"
         )
+    sqli_patterns = [
+        'union',
+        'select',
+        'or 1=1',
+        'sleep(',
+        'benchmark(',
+        '--'
+    ]
+
+    if any(pattern.lower() in keyword.lower() for pattern in sqli_patterns):
+
+        logger.error(
+            f"SQLI_ATTEMPT ip={get_real_ip()} payload={keyword}"
+        )
     try:
         # 搜索关键词拼接产生 SQL 注入
-        query = text(f"title LIKE '%{keyword}%' OR content LIKE '%{keyword}%'")
-        posts = Post.query.filter(query).all()
+        #query = text(f"title LIKE '%{keyword}%' OR content LIKE '%{keyword}%'")
+        #posts = Post.query.filter(query).all()
+        posts = Post.query.filter(
+            (Post.title.contains(keyword)) | (Post.content.contains(keyword))
+        ).all()  # 正常查询
     except Exception as e:
         return f"Database Error: {str(e)}", 500
         
